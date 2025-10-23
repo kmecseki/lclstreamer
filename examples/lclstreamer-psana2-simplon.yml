@@ -1,5 +1,5 @@
 lclstreamer:
-    source_identifier: exp=mfx100852324,run=355
+    source_identifier: exp=mfx100852324,run=51
     event_source: Psana2EventSource
     processing_pipeline: BatchProcessingPipeline
     data_serializer: SimplonBinarySerializer
@@ -67,7 +67,7 @@ data_serializer:
 data_handlers:
     BinaryDataStreamingDataHandler:
         urls:
-            - "tcp://127.0.0.1:12321"
+            - "tcp://134.79.23.43:5000" #127.0.0.1:12321"
         role: client
         library: nng
         socket_type: push

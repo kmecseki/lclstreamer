@@ -57,8 +57,7 @@ class Psana1Timestamp(DataSourceProtocol):
             )
         )
 
-
-class Psana1AreaDetector(DataSourceProtocol):
+class Psana1DetectorInterface(DataSourceProtocol):
     """
     See documentation of the `__init__` function.
     """
@@ -70,7 +69,7 @@ class Psana1AreaDetector(DataSourceProtocol):
         additional_info: dict[str, Any],
     ):
         """
-        Initializes a psana1 area detector data source.
+        Initializes a psana1 Detector values data source.
 
         Arguments:
 
@@ -78,136 +77,30 @@ class Psana1AreaDetector(DataSourceProtocol):
 
             parameters: The configuration parameters
         """
-        del additional_info
         extra_parameters: dict[str, Any] | None = parameters.__pydantic_extra__
 
+        self._name: str = name
         if extra_parameters is None:
             log.error(f"Entries needed by the {name} data source are not defined")
             sys.exit(1)
         if "psana_name" not in extra_parameters:
             log.error(f"Entry 'psana_name' is not defined for data source {name}")
             sys.exit(1)
-        if "calibration" not in extra_parameters:
-            log.error(f"Entry 'calibration' is not defined for data source {name}")
-            sys.exit(1)
-
-        detector_interface: Any = Detector(extra_parameters["psana_name"])
-
-        if extra_parameters["calibration"]:
-            self._data_retrieval_function: Callable[[Any], Any] = (
-                detector_interface.calib
-            )
-        else:
-            self._data_retrieval_function = detector_interface.raw
-
-    def get_data(self, event: Any) -> NDArray[numpy.float_]:
-        """
-        Retrieves a detector frame from a psana1 event
-
-        Arguments:
-
-            event: A psana1 event
-
-         Returns:
-
-            timestamp: A 2d numpy array storing the detector frame as a grayscale
-            image
-        """
-        return numpy.array(self._data_retrieval_function(event), dtype=numpy.float_)
-
-
-class Psana1AssembledAreaDetector(DataSourceProtocol):
-    """
-    See documentation of the `__init__` function.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        parameters: DataSourceParameters,
-        additional_info: dict[str, Any],
-    ):
-        """
-        Initializes a psana1 assembled area detector data source.
-
-        Arguments:
-
-            name: An identifier for the data source
-
-            parameters: The configuration parameters
-        """
-        del additional_info
-        extra_parameters: dict[str, Any] | None = parameters.__pydantic_extra__
-
-        if extra_parameters is None:
-            log.error(f"Entries needed by the {name} data source are not defined")
-            sys.exit(1)
-        if "psana_name" not in extra_parameters:
-            log.error(f"Entry 'psana_name' is not defined for data source {name}")
-            sys.exit(1)
-
-        detector_interface: Any = Detector(extra_parameters["psana_name"])
-
-        self._data_retrieval_function = detector_interface.image
-
-    def get_data(self, event: Any) -> NDArray[numpy.float_]:
-        """
-        Retrieves an assembled detector frame from a psana1 event
-
-        Arguments:
-
-            event: A psana1 event
-
-         Returns:
-
-            timestamp: A 2d numpy array storing the assembeld detector frame as a
-            grayscale image
-        """
-        return numpy.array(self._data_retrieval_function(event), dtype=numpy.float_)
-
-
-class Psana1PV(DataSourceProtocol):
-    """
-    See documentation of the `__init__` function.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        parameters: DataSourceParameters,
-        additional_info: dict[str, Any],
-    ):
-        """
-        Initializes a psana1 PV data source.
-
-        Arguments:
-
-            name: An identifier for the data source
-
-            parameters: The configuration parameters
-        """
-        del additional_info
-        extra_parameters: dict[str, Any] | None = parameters.__pydantic_extra__
-
-        if extra_parameters is None:
-            log.error(f"Entries needed by the {name} data source are not defined")
-            sys.exit(1)
-        if "psana_name" not in extra_parameters:
-            log.error(f"Entry 'psana_name' is not defined for data source {name}")
-            sys.exit(1)
-        if "psana_function" in extra_parameters:
-            if extra_parameters["psana_function"] not in ("sum", "channels"):
-                log.error(
-                    "Currently only 'sum' and 'channels' psana_functions are "
-                    "supported (data source {name})"
-                )
+        if "psana_fields" not in extra_parameters:
+            if ":" in extra_parameters["psana_name"]:
+                self._is_pv: bool = True
+            else:
+                log.error(f"Entry 'psana_fields' is not defined for data source {name}")
                 sys.exit(1)
+        else:
+            fields: list[str] | str = extra_parameters["psana_fields"]
+            self._det_params: list[str] = [fields] if isinstance(fields, str) else fields
 
         self._detector_interface: Any = Detector(extra_parameters["psana_name"])
 
-    def get_data(self, event: Any) -> NDArray[numpy.float_]:
+    def get_data(self, event: Any) -> NDArray[object]:
         """
-        Retrieves a PV value from a psana1 event
+        Retrieves Detector values from a psana1 event
 
         Arguments:
 
@@ -215,118 +108,42 @@ class Psana1PV(DataSourceProtocol):
 
          Returns:
 
-            value: The value of the retrieved data in the format of a numpy float
-            array
+            value: The retrieved data is a list of object, such as:
+            [Object1, Object2, Object3, ...]
+            in the format of a numpy array.
         """
-        return numpy.array(self._detector_interface(event), dtype=numpy.float_)
 
+        data: list[Any] = []
 
-class Psana1BbmonDetectorTotalIntensity(DataSourceProtocol):
-    """
-    See documentation of the `__init__` function.
-    """
+        base: Any
+        if getattr(self, "_is_pv", False):
+            base = self._detector_interface
+            data.append(base(event))
+        else:
+            for param in self._det_params:
+                base = self._detector_interface
+                subfields: list[str] = param.split(".")
+                for field in subfields:
+                    if hasattr(base, field):
+                        base = getattr(base, field)
+                        if callable(base):
+                            try:
+                                base = base(event)
+                            except TypeError:
+                                base = base()
+                    else:
+                        log.error(f"Detector {base} has no parameter {field}")
+                        sys.exit(1)
+                    data.append(base)
 
-    def __init__(
-        self,
-        name: str,
-        parameters: DataSourceParameters,
-        additional_info: dict[str, Any],
-    ):
-        """
-        Initializes a psana1 BbmonDetector data source.
-
-        Arguments:
-
-            name: An identifier for the data source
-
-            parameters: The configuration parameters
-        """
-        del additional_info
-        extra_parameters: dict[str, Any] | None = parameters.__pydantic_extra__
-
-        if extra_parameters is None:
-            log.error(f"Entries needed by the {name} data source are not defined")
-            sys.exit(1)
-        if "psana_name" not in extra_parameters:
-            log.error(f"Entry 'psana_name' is not defined for data source {name}")
-            sys.exit(1)
-
-        self._detector_interface: Any = Detector(extra_parameters["psana_name"])
-
-    def get_data(self, event: Any) -> NDArray[numpy.float_]:
-        """
-        Retrieves BmmonDetector data from an event
-
-        Arguments:
-
-            event: A psana1 event
-
-         Returns:
-
-            value: The value of the retrieved data in the format of a numpy float
-            array
-        """
-        return numpy.array(
-            self._detector_interface.get(event).TotalIntensity(), dtype=numpy.float_
-        )
-
-
-class Psana1IpmDetector(DataSourceProtocol):
-    """
-    See documentation of the `__init__` function.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        parameters: DataSourceParameters,
-        additional_info: dict[str, Any],
-    ):
-        """
-        Initializes a psana1 IpmDetector data source.
-
-        Arguments:
-
-            name: An identifier for the data source
-
-            parameters: The configuration parameters
-        """
-        del additional_info
-        extra_parameters: dict[str, Any] | None = parameters.__pydantic_extra__
-
-        if extra_parameters is None:
-            log.error(f"Entries needed by the {name} data source are not defined")
-            sys.exit(1)
-        if "psana_name" not in extra_parameters:
-            log.error(f"Entry 'psana_name' is not defined for data source {name}")
-            sys.exit(1)
-        if "psana_function" not in extra_parameters:
-            log.error(f"Entry 'psana_function' is not defined for data source {name}")
-            sys.exit(1)
-        if extra_parameters["psana_function"] not in ("channel"):
-            log.error(
-                "Currently only the 'channel' psana_functions is supported "
-                "(data source {name})"
-            )
-            sys.exit(1)
-
-        detector_interface: Any = Detector(extra_parameters["psana_name"])
-        self._data_retrieval_function: Callable[[Any], Any] = detector_interface.channel
-
-    def get_data(self, event: Any) -> NDArray[numpy.float_]:
-        """
-        Retrieves IpmDetector data from a psana1 event
-
-        Arguments:
-
-            event: A psana1 event
-
-         Returns:
-
-            value: The value of the retrieved data in the format of a numpy float
-            array
-        """
-        return numpy.array(self._data_retrieval_function(event), dtype=numpy.float_)
+        if len(data) == 1:
+            data = data[0]
+            if isinstance(data, dict):
+                log.error(f"Data is in dict format: {self._name}!")
+                exit(1)
+            else:
+                return numpy.array(data, dtype=numpy.float_)
+        return numpy.array(data, dtype=object)
 
 
 class Psana1EvrCodes(DataSourceProtocol):
@@ -387,60 +204,3 @@ class Psana1EvrCodes(DataSourceProtocol):
             mode="constant",
             constant_values=(0, 0),
         )
-
-
-class Psana1UsdUsbDetector(DataSourceProtocol):
-    """
-    See documentation of the `__init__` function.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        parameters: DataSourceParameters,
-        additional_info: dict[str, Any],
-    ):
-        """
-        Initializes a psana1 UsdUsbDetector data source.
-
-        Arguments:
-
-            name: An identifier for the data source
-
-            parameters: The configuration parameters
-        """
-        del additional_info
-        extra_parameters: dict[str, Any] | None = parameters.__pydantic_extra__
-
-        if extra_parameters is None:
-            log.error(f"Entries needed by the {name} data source are not defined")
-            sys.exit(1)
-        if "psana_name" not in extra_parameters:
-            log.error(f"Entry 'psana_name' is not defined for data source {name}")
-            sys.exit(1)
-        if "psana_function" not in extra_parameters:
-            log.error(f"Entry 'psana_function' is not defined for data source {name}")
-            sys.exit(1)
-        if extra_parameters["psana_function"] not in ("values"):
-            log.error(
-                "Currently only the 'channel' psana_functions is supported "
-                "(data source {name})"
-            )
-            sys.exit(1)
-        detector_interface: Any = Detector(extra_parameters["psana_name"])
-        self._data_retrieval_function: Callable[[Any], Any] = detector_interface.values
-
-    def get_data(self, event: Any) -> NDArray[numpy.float_]:
-        """
-        Retrieves UsdUsbDetector data from a psana1 event
-
-        Arguments:
-
-            event: A psana1 event
-
-         Returns:
-
-            value: The value of the retrieved data in the format of a numpy float
-            array
-        """
-        return numpy.array(self._data_retrieval_function(event), dtype=numpy.float_)
