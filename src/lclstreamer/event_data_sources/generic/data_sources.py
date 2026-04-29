@@ -320,13 +320,13 @@ class BaseDetectorInterface(DataSourceProtocol):
         return data_caller
 
     def _get_callable_with_event(self, name, base, event):
-        return (name, numpy.array(base(event), dtype=self.dtype))
+        return (name, numpy.asarray(base(event), dtype=self.dtype))
 
     def _get_callable_with_noevent(self, name, base, event):
-        return (name, numpy.array(base(), dtype=self.dtype))
+        return (name, numpy.asarray(base(), dtype=self.dtype))
 
     def _get_noncallable(self, name, base, event):
-        return (name, numpy.array(base, dtype=self.dtype))
+        return (name, numpy.asarray(base, dtype=self.dtype))
 
     def _create_detector(self, *args, **kwargs):
         raise NotImplementedError("Derived classes have to implement their _create_detector")
