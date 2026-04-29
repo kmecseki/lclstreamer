@@ -149,7 +149,7 @@ class DataStorage:
                                 "with which this label was originally initialized"
                             )
                         data_container.data.append(data_value)
-            self._count += 1
+        self._count += 1
 
     def retrieve_stored_data(self) -> dict[str, StrFloatIntNDArray | None]:
         """
