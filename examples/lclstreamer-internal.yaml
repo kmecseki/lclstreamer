@@ -16,10 +16,14 @@ data_sources:
         array_shape: 3,
         array_dtype: uint16
         always_random: False
-    const_float:
+    const_data_example1:
         type: ConstValue
         value: 6.4
         dtype: float64
+    const_data_example2:
+        type: ConstValue
+        value: [6, 3, 1]
+        dtype: uint32
 
 processing_pipeline:
     type: BatchProcessingPipeline

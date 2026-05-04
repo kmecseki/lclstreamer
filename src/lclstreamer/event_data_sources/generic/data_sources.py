@@ -154,17 +154,16 @@ class GenericRandomNumpyArray(DataSourceProtocol):
             random data (either of integer or floating type)
         """
         if numpy.issubdtype(self._array_dtype, numpy.integer):
-            array = numpy.random.randint(
+            return numpy.random.randint(
                 low=0, high=255, size=self._array_shape).astype(self._array_dtype
             )
         elif numpy.issubdtype(self._array_dtype, numpy.floating):
-            array = numpy.random.random(self._array_shape).astype(self._array_dtype)
+            return numpy.random.random(self._array_shape).astype(self._array_dtype)
         else:
             log_error_and_exit(
                 "Only random arrays of integer of floating types are currently "
                 "supported"
             )
-        return array
 
 
     def get_data(self, event: Any) -> dict[str, NDArray[numpy.number]]:
